@@ -1,0 +1,26 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Native build intermediates (CMake/NDK)
+.cxx/
+app/.cxx/
+
+# Local machine config (SDK path etc.) - never commit, it's per-developer
+local.properties
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.DS_Store
+
+# Kotlin compiler daemon cache
+.kotlin/
+
+# Claude Code local session settings
+.claude/
+
+# Signing
+*.jks
+*.keystore
