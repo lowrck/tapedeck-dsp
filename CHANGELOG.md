@@ -121,8 +121,3 @@ All notable changes made to TapeDeck DSP during development, in the order they w
 - Added the missing `x86` ABI to `abiFilters` in `app/build.gradle.kts` (previously `arm64-v8a`, `armeabi-v7a`, `x86_64` only), completing all four requested architectures in a single non-split APK.
 - Verified the native DSP engine compiles cleanly for `x86` and that all four `.so` slices are bundled in one APK; reinstalled and confirmed a clean launch on-device.
 
-## Current — This file
-
-**Request:** "update the changelog excluding local device file copy from it, and afterwards push the build.gradle.kts changes as well as the updated changelog to github"
-
-- Updated this `CHANGELOG.md` with the README, GitHub repository, and universal-APK entries above.
