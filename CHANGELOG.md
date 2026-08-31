@@ -94,8 +94,35 @@ All notable changes made to TapeDeck DSP during development, in the order they w
 
 - `playPreviousTrack()` now: skips back immediately if within the first 10 seconds of the current track; otherwise restarts the current track on the first press, and skips back a track if pressed again within 3 seconds. Applies uniformly to the in-app button, notification, and hardware media keys, since they all funnel through the same service method. Verified all three cases on-device via direct UI taps.
 
-## Current — This file
+## 2:41 PM — Changelog
 
 **Request:** "create a changelog.MD file in the project folder containing a full list of changes timestamped per request prompted to you"
 
 - Added this `CHANGELOG.md`.
+
+## 2:43 PM — README
+
+**Request:** "create a README.md with a description of the app, a short instructional on how to compile the app as well as a disclaimer that this was created using claude."
+
+- Added `README.md`: app description, feature summary, build requirements and instructions (Android Studio and command-line), project layout, and a disclaimer that the app was built with Claude.
+
+## ~2:47 PM — GitHub repository
+
+**Request:** "create a github project and push the project to it"
+
+- Installed the GitHub CLI (`gh`) to a user-local directory (no root needed) and authenticated.
+- Initialized git in the project root and added a `.gitignore` (build outputs, native build intermediates, `local.properties`, IDE/tooling config).
+- Created the public repository [`lowrck/tapedeck-dsp`](https://github.com/lowrck/tapedeck-dsp) and pushed the initial commit.
+
+## 2:51 PM — Universal APK
+
+**Request:** "now compile a universal binary apk with support for x86, x86_64, armv7 and arm64"
+
+- Added the missing `x86` ABI to `abiFilters` in `app/build.gradle.kts` (previously `arm64-v8a`, `armeabi-v7a`, `x86_64` only), completing all four requested architectures in a single non-split APK.
+- Verified the native DSP engine compiles cleanly for `x86` and that all four `.so` slices are bundled in one APK; reinstalled and confirmed a clean launch on-device.
+
+## Current — This file
+
+**Request:** "update the changelog excluding local device file copy from it, and afterwards push the build.gradle.kts changes as well as the updated changelog to github"
+
+- Updated this `CHANGELOG.md` with the README, GitHub repository, and universal-APK entries above.
