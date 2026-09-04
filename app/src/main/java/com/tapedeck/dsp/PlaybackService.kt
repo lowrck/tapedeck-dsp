@@ -181,8 +181,20 @@ class PlaybackService : Service() {
 
                 val metadata = metadataDeferred.await()
                 val fallbackTitle = displayName?.substringBeforeLast('.')
-                _state.update {
-                    it.copy(
+                _state.update { current ->
+                    // Playlist entries are titled from the M3U/filename at
+                    // parse time (no per-track tag read, so loading a large
+                    // playlist stays fast) - patch in the real ID3 title for
+                    // the track that just finished loading, now that we have
+                    // it, so the playlist bar matches the header above it.
+                    val playlist = if (metadata.title != null && current.currentTrackIndex in current.playlist.indices) {
+                        current.playlist.toMutableList().apply {
+                            this[current.currentTrackIndex] = this[current.currentTrackIndex].copy(title = metadata.title)
+                        }
+                    } else {
+                        current.playlist
+                    }
+                    current.copy(
                         isLoading = false,
                         trackName = metadata.title ?: fallbackTitle,
                         albumName = metadata.album,
@@ -190,6 +202,7 @@ class PlaybackService : Service() {
                         durationMs = engine.durationMs,
                         positionMs = 0,
                         isPlaying = autoPlay,
+                        playlist = playlist,
                     )
                 }
                 updateMediaSessionMetadata()

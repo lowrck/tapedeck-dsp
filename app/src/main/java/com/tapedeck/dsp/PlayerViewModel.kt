@@ -53,7 +53,12 @@ data class PlayerUiState(
  */
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
-    private var pendingPlaylistRoot: DocumentFile? = null
+    private var pendingPlaylistIndex: SafFileIndex? = null
+
+    // Populated by scanLibrary, so playLibraryPlaylist can reuse the same
+    // index instead of re-walking the whole SAF tree just to open one file.
+    private var libraryIndex: SafFileIndex? = null
+
     private val prefs = application.getSharedPreferences("tapedeck_prefs", Application.MODE_PRIVATE)
 
     private var playbackService: PlaybackService? = null
@@ -133,12 +138,13 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
                 val root = DocumentFile.fromTreeUri(context, treeUri)
                     ?: throw IllegalStateException("Could not open that folder")
-                val found = withContext(Dispatchers.IO) { PlaylistResolver.findAllPlaylistFiles(root) }
+                val index = withContext(Dispatchers.IO) { PlaylistResolver.buildIndex(context, root) }
+                val found = PlaylistResolver.findAllPlaylistFiles(index)
                 if (found.isEmpty()) throw IllegalStateException("No .m3u or .m3u8 file found in that folder")
 
-                pendingPlaylistRoot = root
+                pendingPlaylistIndex = index
                 if (found.size == 1) {
-                    openPlaylistFile(root, found.first().file)
+                    openPlaylistFile(index, found.first().file)
                 } else {
                     endLocalWork()
                     _uiState.update { it.copy(availablePlaylists = found) }
@@ -150,11 +156,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectPlaylist(entry: PlaylistFileEntry) {
-        val root = pendingPlaylistRoot ?: return
+        val index = pendingPlaylistIndex ?: return
         viewModelScope.launch {
             beginLocalWork()
             _uiState.update { it.copy(availablePlaylists = emptyList()) }
-            openPlaylistFile(root, entry.file)
+            openPlaylistFile(index, entry.file)
         }
     }
 
@@ -174,8 +180,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             _uiState.update { it.copy(isLibraryLoading = true, libraryError = null) }
             try {
                 val context = getApplication<Application>()
-                val folderName = DocumentFile.fromTreeUri(context, treeUri)?.name
-                val data = LibraryScanner.scan(context, treeUri)
+                val root = DocumentFile.fromTreeUri(context, treeUri)
+                val folderName = root?.name
+                val (data, index) = if (root != null) {
+                    withContext(Dispatchers.IO) {
+                        val builtIndex = PlaylistResolver.buildIndex(context, root)
+                        LibraryScanner.scan(context, builtIndex) to builtIndex
+                    }
+                } else {
+                    LibraryData() to null
+                }
+                libraryIndex = index
                 _uiState.update {
                     it.copy(isLibraryLoading = false, library = data, libraryFolderName = folderName)
                 }
@@ -191,27 +206,27 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playLibraryPlaylist(item: LibraryPlaylistItem) {
-        val treeUri = prefs.getString(KEY_LIBRARY_FOLDER_URI, null) ?: return
-        val root = DocumentFile.fromTreeUri(getApplication(), Uri.parse(treeUri)) ?: return
+        val index = libraryIndex ?: return
         viewModelScope.launch {
             beginLocalWork()
-            openPlaylistFile(root, item.entry.file)
+            openPlaylistFile(index, item.entry.file)
         }
     }
 
-    private suspend fun openPlaylistFile(root: DocumentFile, playlistFile: DocumentFile) {
+    private suspend fun openPlaylistFile(index: SafFileIndex, playlistFile: DocumentFile) {
         try {
             val context = getApplication<Application>()
-            val content = withContext(Dispatchers.IO) {
-                context.contentResolver.openInputStream(playlistFile.uri)
+            val tracks = withContext(Dispatchers.IO) {
+                val content = context.contentResolver.openInputStream(playlistFile.uri)
                     ?.bufferedReader()
                     ?.use { it.readText() }
-            } ?: throw IllegalStateException("Could not read the playlist file")
+                    ?: throw IllegalStateException("Could not read the playlist file")
 
-            val tracks = PlaylistParser.parse(content).mapNotNull { entry ->
-                val resolved = PlaylistResolver.resolveTrack(root, entry.path) ?: return@mapNotNull null
-                val fallbackTitle = resolved.name?.substringBeforeLast('.') ?: entry.path
-                PlaylistTrack(title = entry.title ?: fallbackTitle, uri = resolved.uri)
+                PlaylistParser.parse(content).mapNotNull { entry ->
+                    val resolved = PlaylistResolver.resolveTrack(index, entry.path) ?: return@mapNotNull null
+                    val fallbackTitle = resolved.name.substringBeforeLast('.')
+                    PlaylistTrack(title = entry.title ?: fallbackTitle, uri = resolved.file.uri)
+                }
             }
             if (tracks.isEmpty()) throw IllegalStateException("Playlist had no resolvable tracks")
 

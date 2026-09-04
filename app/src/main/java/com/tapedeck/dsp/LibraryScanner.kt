@@ -47,23 +47,27 @@ data class LibraryData(
  * shared by reference across every track/grouping that uses it, since
  * decoding a full bitmap per track would be wasteful for both time and
  * memory.
+ *
+ * The directory walk itself goes through [PlaylistResolver.buildIndex] (one
+ * cursor query per directory) rather than [DocumentFile.listFiles] plus
+ * per-child property access, which would cost a separate binder round trip
+ * per file and dominate scan time for anything beyond a handful of tracks.
  */
 object LibraryScanner {
 
     private val audioExtensions = setOf("mp3", "m4a", "aac", "flac", "wav", "ogg")
     private const val ALBUM_ART_TARGET_PX = 400
 
-    suspend fun scan(context: Context, treeUri: Uri): LibraryData = withContext(Dispatchers.IO) {
-        val root = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext LibraryData()
-
-        val audioFiles = mutableListOf<DocumentFile>()
-        collectFiles(root, audioFiles)
+    suspend fun scan(context: Context, index: SafFileIndex): LibraryData = withContext(Dispatchers.IO) {
+        val audioFiles = index.allFiles.filter {
+            it.name.substringAfterLast('.', "").lowercase() in audioExtensions
+        }
 
         val albumArtCache = HashMap<String, Bitmap?>()
         val songs = mutableListOf<LibrarySong>()
 
-        for (file in audioFiles) {
-            val song = readSong(context, file, albumArtCache) ?: continue
+        for (indexed in audioFiles) {
+            val song = readSong(context, indexed.file, albumArtCache) ?: continue
             songs.add(song)
         }
 
@@ -91,7 +95,7 @@ object LibraryScanner {
             }
             .sortedBy { it.name.lowercase() }
 
-        val playlists = PlaylistResolver.findAllPlaylistFiles(root)
+        val playlists = PlaylistResolver.findAllPlaylistFiles(index)
             .map { entry -> LibraryPlaylistItem(name = playlistDisplayName(entry), entry = entry) }
             .sortedBy { it.name.lowercase() }
 
@@ -138,20 +142,7 @@ object LibraryScanner {
     private fun albumKey(artist: String, album: String) = "$artist||$album"
 
     private fun playlistDisplayName(entry: PlaylistFileEntry): String =
-        (entry.file.name ?: entry.relativePath).substringBeforeLast('.')
-
-    private fun collectFiles(dir: DocumentFile, out: MutableList<DocumentFile>, depth: Int = 0) {
-        if (depth > 6) return
-        for (child in dir.listFiles()) {
-            val name = child.name ?: continue
-            if (child.isFile) {
-                val extension = name.substringAfterLast('.', "").lowercase()
-                if (extension in audioExtensions) out.add(child)
-            } else if (child.isDirectory) {
-                collectFiles(child, out, depth + 1)
-            }
-        }
-    }
+        entry.name.substringBeforeLast('.')
 
     /** Groups an artist's flat song list into per-album buckets, for drill-down navigation. */
     fun albumsForArtist(artist: LibraryArtist): List<LibraryAlbum> =

@@ -46,7 +46,7 @@ fun PlaylistPickerDialog(
                     ) {
                         Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = accent)
                         Spacer(modifier = Modifier.width(12.dp))
-                        val displayName = (entry.file.name ?: entry.relativePath).substringBeforeLast('.')
+                        val displayName = entry.name.substringBeforeLast('.')
                         Text(text = displayName, color = labelColor)
                     }
                 }
