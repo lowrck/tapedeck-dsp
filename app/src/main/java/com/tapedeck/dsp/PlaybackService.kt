@@ -54,6 +54,7 @@ data class PlaybackState(
     val tapeType: TapeType = TapeType.TYPE_I,
     val playlist: List<PlaylistTrack> = emptyList(),
     val currentTrackIndex: Int = -1,
+    val shuffleEnabled: Boolean = false,
     val error: String? = null,
 )
 
@@ -88,6 +89,12 @@ class PlaybackService : Service() {
     // route reappears, without ever auto-resuming a pause the user chose.
     private var pausedDueToRouteChange = false
     private val audioManager by lazy { getSystemService(AudioManager::class.java) }
+
+    // The queue exactly as playQueue() received it (playlist/album/library
+    // order), kept aside so shuffle can be toggled on and off without losing
+    // that order - _state.playlist becomes the shuffled arrangement while
+    // shuffle is on.
+    private var originalQueue: List<PlaylistTrack> = emptyList()
 
     private val becomingNoisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -181,6 +188,15 @@ class PlaybackService : Service() {
 
                 val metadata = metadataDeferred.await()
                 val fallbackTitle = displayName?.substringBeforeLast('.')
+                if (metadata.title != null) {
+                    // Keep originalQueue's title in sync too, not just the
+                    // live playlist - shuffle uses uri to identify tracks
+                    // (see shuffledWithFirst), but toggling shuffle off
+                    // rebuilds the playlist from originalQueue, and it
+                    // should carry forward any ID3 titles already learned
+                    // rather than reverting to the filename fallback.
+                    originalQueue = originalQueue.map { if (it.uri == uri) it.copy(title = metadata.title) else it }
+                }
                 _state.update { current ->
                     // Playlist entries are titled from the M3U/filename at
                     // parse time (no per-track tag read, so loading a large
@@ -216,8 +232,12 @@ class PlaybackService : Service() {
 
     fun playQueue(tracks: List<PlaylistTrack>, startIndex: Int = 0) {
         if (tracks.isEmpty()) return
-        _state.update { it.copy(playlist = tracks, currentTrackIndex = -1) }
-        playTrackAt(startIndex)
+        originalQueue = tracks
+        val safeStart = startIndex.coerceIn(tracks.indices)
+        val shuffle = _state.value.shuffleEnabled
+        val ordered = if (shuffle) shuffledWithFirst(tracks, tracks[safeStart]) else tracks
+        _state.update { it.copy(playlist = ordered, currentTrackIndex = -1) }
+        playTrackAt(if (shuffle) 0 else safeStart)
     }
 
     fun playTrackAt(index: Int) {
@@ -225,6 +245,52 @@ class PlaybackService : Service() {
         if (index !in tracks.indices) return
         _state.update { it.copy(currentTrackIndex = index) }
         loadTrack(tracks[index].uri, tracks[index].title, autoPlay = true)
+    }
+
+    // Toggling shuffle never interrupts or restarts the track currently
+    // playing - it only reorders what comes before/after it, so the queue is
+    // freshly randomized (or restored to its original order) without a jump.
+    fun setShuffleEnabled(enabled: Boolean) {
+        val s = _state.value
+        if (s.shuffleEnabled == enabled) return
+        if (originalQueue.isEmpty()) {
+            _state.update { it.copy(shuffleEnabled = enabled) }
+            return
+        }
+
+        val currentTrack = s.playlist.getOrNull(s.currentTrackIndex)
+        val reordered: List<PlaylistTrack>
+        val newIndex: Int
+        when {
+            enabled && currentTrack != null -> {
+                reordered = shuffledWithFirst(originalQueue, currentTrack)
+                newIndex = 0
+            }
+            enabled -> {
+                reordered = originalQueue.shuffled()
+                newIndex = 0
+            }
+            else -> {
+                reordered = originalQueue
+                newIndex = currentTrack
+                    ?.let { t -> reordered.indexOfFirst { it.uri == t.uri } }
+                    ?.takeIf { it >= 0 }
+                    ?: s.currentTrackIndex
+            }
+        }
+        _state.update { it.copy(shuffleEnabled = enabled, playlist = reordered, currentTrackIndex = newIndex) }
+    }
+
+    fun toggleShuffle() = setShuffleEnabled(!_state.value.shuffleEnabled)
+
+    // Matches by uri, not full equality - a track's title can be patched in
+    // place once its ID3 tag is read (see loadTrack), so relying on
+    // structural equality here would silently fail to exclude the "first"
+    // track from the shuffled remainder once its title has drifted from the
+    // copy still sitting in originalQueue, duplicating it in the result.
+    private fun shuffledWithFirst(tracks: List<PlaylistTrack>, first: PlaylistTrack): List<PlaylistTrack> {
+        val rest = tracks.filter { it.uri != first.uri }
+        return listOf(first) + rest.shuffled()
     }
 
     fun playNextTrack() {

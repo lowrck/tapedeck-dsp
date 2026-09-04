@@ -236,8 +236,10 @@ private fun PlayerTabContent(
                 currentIndex = uiState.currentTrackIndex,
                 trackCount = uiState.playlist.size,
                 trackTitle = uiState.playlist.getOrNull(uiState.currentTrackIndex)?.title ?: "",
+                shuffleEnabled = uiState.shuffleEnabled,
                 onPrevious = { viewModel.playPreviousTrack() },
                 onNext = { viewModel.playNextTrack() },
+                onToggleShuffle = { viewModel.toggleShuffle() },
             )
         }
 

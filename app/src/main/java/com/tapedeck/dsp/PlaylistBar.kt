@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
@@ -19,14 +20,17 @@ import androidx.compose.ui.unit.dp
 
 private val accent = Color(0xFFD9A441)
 private val labelColor = Color(0xFFEDE3D0)
+private val inactiveIconColor = Color(0xFFB0A08A)
 
 @Composable
 fun PlaylistBar(
     currentIndex: Int,
     trackCount: Int,
     trackTitle: String,
+    shuffleEnabled: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onToggleShuffle: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -34,6 +38,13 @@ fun PlaylistBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        IconButton(onClick = onToggleShuffle) {
+            Icon(
+                Icons.Filled.Shuffle,
+                contentDescription = if (shuffleEnabled) "Disable shuffle" else "Enable shuffle",
+                tint = if (shuffleEnabled) accent else inactiveIconColor,
+            )
+        }
         IconButton(onClick = onPrevious, enabled = currentIndex > 0) {
             Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous track", tint = accent)
         }

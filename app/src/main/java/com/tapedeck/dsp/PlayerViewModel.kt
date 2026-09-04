@@ -36,6 +36,7 @@ data class PlayerUiState(
     val tapeType: TapeType = TapeType.TYPE_I,
     val playlist: List<PlaylistTrack> = emptyList(),
     val currentTrackIndex: Int = -1,
+    val shuffleEnabled: Boolean = false,
     val availablePlaylists: List<PlaylistFileEntry> = emptyList(),
     val library: LibraryData = LibraryData(),
     val isLibraryLoading: Boolean = false,
@@ -93,6 +94,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                             tapeType = s.tapeType,
                             playlist = s.playlist,
                             currentTrackIndex = s.currentTrackIndex,
+                            shuffleEnabled = s.shuffleEnabled,
                             error = localErrorOverride ?: s.error,
                         )
                     }
@@ -250,6 +252,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun playTrackAt(index: Int) = playbackService?.playTrackAt(index) ?: Unit
+
+    fun toggleShuffle() = playbackService?.toggleShuffle() ?: Unit
 
     fun playNextTrack() = playbackService?.playNextTrack() ?: Unit
 
